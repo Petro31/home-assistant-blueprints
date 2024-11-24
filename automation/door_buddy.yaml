@@ -136,6 +136,18 @@ blueprint:
                 - sensor
                 - binary_sensor
                 - input_boolean
+        
+        people_timeout:
+          name: People Timeout
+          default:
+            seconds: 30
+          description: >
+            Sometimes people aren't detected immediately when they arrive home. To account for
+            this, a timeout is added.  If people are detected within the timeout a notification
+            will be sent with the found person.  Otherwise, a notification will be sent when
+            the timeout is reached letting you know an unknown person used a door.
+          selector:
+            duration:
 
     mqtt_section:
       name: MQTT
@@ -387,17 +399,6 @@ trigger:
   - "off"
   - closed
 
-- id: people
-  platform: state
-  entity_id: !input input_people
-  not_from:
-  - unknown
-  - unavailable
-  to:
-  - 'on'
-  - 'home'
-  enable: "{{ tv_people | count > 0 }}"
-
 - id: resume_lighting
   platform: time
   at: sensor.{{ tv_slug }}_resume_trigger
@@ -435,7 +436,7 @@ variables:
   brightness: "{{ _brightness | default(100) }}"
 
   _light_duration: !input light_duration
-  light_duration: "{{ _light_duration | default({'minutes': 2}) }}"
+  light_duration: "{{ _light_duration | default(dict(minutes=2)) }}"
 
   _quiet_window: !input quiet_window
   quiet_window: "{{ _quiet_window | default(None) }}"
@@ -444,6 +445,9 @@ variables:
   _people: !input people
   people: "{{ _people | default([]) }}"
   has_people: "{{ people | count > 0 }}"
+
+  _people_timeout: !input people_timeout
+  people_timeout: "{{ _people_timeout | default(dict(seconds=30)) }}"
 
   _discovery_prefix: !input mqtt_discovery_prefix
   discovery_previx: "{{ _discovery_prefix | default('homeassistant') }}"
@@ -745,6 +749,39 @@ action:
           sequence:
           - action: "{{ repeat.item.action }}"
             data: "{{ repeat.item.data }}"
+      
+      - if: "{{ has_people and is_first and who == word_for_someone.title() }}"
+        then:
+        - wait_for_trigger:
+          - platform: state
+            entity_id: !input input_people
+            not_from:
+            - unknown
+            - unavailable
+            to:
+            - 'on'
+            - 'home'
+            enable: "{{ people | count > 0 and people | first != 'sensor.people_at_home' }}"
+          - platform: template
+            value_template: >
+              {{ word_for_someone.title() not in state_attr('sensor.people_at_home', 'people') }}
+            enable: "{{ people | count == 1 and people | first == 'sensor.people_at_home' }}"
+          timeout: "{{ people_timeout }}"
+
+        - if: "{{ wait.remaining == 0 }}"
+          then:
+          - variables:
+              title: "{{ person_unknown_title }}"
+              message: "{{ person_unknown_message }}"
+              notify: *notify_variable
+          - repeat: &notify_repeat
+          else:
+          - variables:
+              who: *who
+              title: "{{ found_person_title.format(who) }}"
+              message: "{{ found_person_message.format(who) }}"
+              notify: *notify_variable
+          - repeat: &notify_repeat
 
   - alias: Door Closed
     if: "{{ storage != {} and trigger.id == 'off' }}"
@@ -788,15 +825,12 @@ action:
         notify: *notify_variable
     - repeat: &notify_repeat
 
-  - alias: Notify person if last person was unkonwn
-    if: "{{ storage != {} and trigger.id == 'people' }}"
-    then:
-    - variables:
-
   - alias: Resume Lighting
     if: "{{ storage != {} and trigger.id == 'resume_lighting' }}"
     then:
     - variables:
+        something: >
+          {{ TODO, add condition for sundown & lux sensor. }}
 
   - alias: Notify after Quiet Window
     if: "{{ storage != {} and trigger.id == 'quiet_window' }}"
@@ -806,3 +840,4 @@ action:
         title: "{{ door_count_title.format(count=storage.current.count) }}"
         message: "{{ door_count_message.format(count=storage.current.count, duration=this_duration) }}"
         notify: *notify_variable
+    - repeat: &notify_repeat
