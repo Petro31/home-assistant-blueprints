@@ -1,0 +1,762 @@
+blueprint:
+  name: Door Buddy
+  description: >
+    Automation for illuminating doors and notifying when a door is open.
+
+    This automation requires MQTT.  A device will be created with a series
+    of sensors.
+  author: Petro
+  domain: automation
+  homeassistant:
+    min_version: 2024.11.0
+  input:
+    door:
+      name: Door Entity
+      description: >
+        (Required) The door entity that will trigger the notifications, and lights.
+      selector:
+        entity:
+          filter:
+            domain:
+            - binary_sensor
+            - cover
+            device_class:
+            - door
+            - garage_door
+            - window
+            - garage
+            - gate
+            - opening
+
+    door_name:
+      name: Door Name
+      default: "Door"
+      description: >
+        (Required) Name of the door used in the automation.
+
+        This is required to make a unique device.
+      selector:
+        text:
+
+    notifications:
+      name: Notification, Script, or Persistent Notification
+      default: []
+      description: >
+        Enter a notification call-service.  This action will be used to notify you.
+        This blueprint filters down to 3 specific actions.  If you do not use one of the following 
+        actions, you will not get notified.  E.g.:
+        * persistent_notification.create
+        * notify.petro
+        * script.notify_people
+
+        The following variables will be passed to your notification(s):  `title`, `message`.
+      selector:
+        action:
+
+    light_section:
+      name: Illuminate the door when it opens
+      icon: mdi:lightbulb-group
+      description: >
+        Optionally illuminate the door when the door opens.
+      input:
+        lights:
+          name: Lights
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain:
+                - light
+                - switch
+
+        brightness:
+          name: Brightness
+          default: 100
+          selector:
+            numeric:
+              min: 1
+              max: 100
+              unit_of_measurement: %
+              mode: box
+
+        light_duration:
+          name: Light Duration
+          default: 
+            minutes: 2
+          selector:
+            duration:
+
+    door_notifications:
+      name: Notification Controls
+      icon: mdi:door-open
+      description: >
+        Optionally notify when the door opens.
+      input:
+        open_duration:
+          name: Open too long duration
+          default: ~
+          description: >
+            Notify when the door is open for a long period of time.  Leave blank if you don't want this notification.
+          selector:
+            duration:
+
+        quiet_window:
+          name: Quiet Window
+          default: ~
+          description: >
+            Suppress repeated notifications inside the quiet window duration.  When the duration
+            runs out, you will recieve a notification with the number of times the door was opened
+            during the duration.  You will still recieve a notification on first open, so you will recieve
+            at most 2 notifications for all door openings within the quiet window.  The quiet window is reset
+            each time the door is opened.
+          selector:
+            duration:
+
+        people:
+          name: People
+          default: ~
+          description: >
+            Door Buddy will attempt to infer based on the included people or binary sensors.
+    
+            People are listed first, and input_booleans and binary sensors are listed second.  This
+            allows you to create an input_boolean or binary_sensor that represents "Guests" or "Company".
+            They will always be listed last in the notifications.
+    
+            Lastly, if you wish to control the template yourself, you can create a template sensor with the
+            name sensor.people_at_home.  If you include just that sensor in the list of people, will be used
+            from that sensor.  Keep in mind that the sensor needs an attribute with the key `people` that represents
+            a list of people that are home.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain:
+                - people
+                - sensor
+                - binary_sensor
+                - input_boolean
+
+    mqtt_section:
+      name: MQTT
+      icon: mdi:quality-medium
+      description:
+        MQTT settings
+      collapse: true
+      input:
+        mqtt_discovery_prefix:
+          name: MQTT Discovery Prefix
+          default: homeassistant
+          description: >
+            Discovery previx for automatic discovery.  Leave this as `homeassistant` if you did
+            not change this when setting up the MQTT integration.
+          selector:
+            text:
+
+    translations:
+      name: Translations
+      icon: mdi:translate
+      description:
+        Control the messages that are output.
+      collapse: true
+      input:
+        door_open_title:
+          name: Door Open Title
+          default: "{door} Opened!"
+          description: >
+            Title of the notification when the door has opened.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+          selector:
+            text:
+    
+        door_open_message:
+          name: Door Open Message
+          default: "{who} used the {door}"
+          description: >
+            Message of the notification when the door has opened and you're not tracking people.
+          
+            {door} is required inside this string.  The "door name" will replace {door} in the message.
+            {who} is required inside this string.  The list of people at home will replace {who} in the message.
+
+          selector:
+            text:
+
+        door_people_message:
+          name: Door People Message
+          default: "{who} used the {door}"
+          description: >
+            Message of the notification when the door has opened and you're tracking people.
+                      
+            {door} is required inside this string.  The "door name" will replace {door} in the message.
+            {who} is required inside this string.  The list of people at home will replace {who} in the message.
+          selector:
+            text:
+
+        door_long_title:
+          name: Door Open Too Long Title
+          default: "{door} Open!"
+          description: >
+            Title of the notification when the door has been open for a duration.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+          selector:
+            text:
+
+        door_long_message:
+          name: Door Open Too Long Message
+          default: "{door} has been open for {duration}!"
+          description: >
+            Message of the notification when the door has opened.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+            {duration} is required inside the string.  The relative time will replace {duration} in the message.
+          selector:
+            text:
+          
+        person_unknown_title:
+          name: Unknown Person Title
+          default: "{door} user is still unknown!"
+          description: >
+            If an unknown person opens a door, this title will appear if the person is still an
+            unknown user after a duration.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+          selector:
+            text:
+    
+        person_unknown_message:
+          name: Unknown Person Message
+          default: The person who used the {door} is still unknown!
+          description: >
+            If an unknown person opens a door, this title will appear if the person is still an
+            unknown user after a duration.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+          selector:
+            text:
+    
+        found_person_title:
+          name: Found Person Title
+          default: "Found {who} user!"
+          description: >
+            If an unknown person opens a door, this title will appear if the person
+            arrived after the door was opened.  This occurs when a device_tracker is slow
+            to update.
+
+            {who} is required inside this string.  The list of people at home will replace {who} in the message.
+          selector:
+            text:
+    
+        found_person_message:
+          name: Found Person Message
+          default: "The person who used the {door} is {who}!"
+          description: >
+            If an unknown person opens a door, this message will appear if the person
+            arrived after the door was opened.  This occurs when a device_tracker is slow
+            to update.
+                      
+            {door} is required inside this string.  The "door name" will replace {door} in the message.
+            {who} is required inside this string.  The list of people at home will replace {who} in the message.
+          selector:
+            text:
+    
+        word_for_someone:
+          name: Translation for the word "someone"
+          default: "someone"
+          description: A translation for the word "someone" when no people are found at home.
+          selector:
+            text:
+    
+        word_for_and:
+          name: Translation for the word "and"
+          default: "and"
+          description: A translation for the word "and" when combining the list of people at home.
+          selector:
+            text:
+    
+        word_for_second:
+          name: Translation for the word "second", e.g. 1 second.
+          default: "second"
+          description: A translation for the word "second" for the relative time.
+          selector:
+            text:
+    
+        word_for_seconds:
+          name: Translation for the word "seconds", e.g. 2 seconds.
+          default: "seconds"
+          description: A translation for the word "seconds" for the relative time.
+          selector:
+            text:
+    
+        word_for_minute:
+          name: Translation for the word "minute", e.g. 1 minute.
+          default: "minute"
+          description: A translation for the word "minute" for the relative time.
+          selector:
+            text:
+    
+        word_for_minutes:
+          name: Translation for the word "minutes", e.g. 2 minutes.
+          default: "minutes"
+          description: A translation for the word "minutes" for the relative time.
+          selector:
+            text:
+
+mode: parallel
+
+trigger_variables:
+
+  ### Trigger variables without defaults ###
+  tv_door_name: !input door_name
+  tv_slug: "{{ tv_door_name | slugify }}"
+
+  ### Trigger variables with defaults ###
+  _tv_open_duration: !input open_duration
+  tv_open_duration: "{{ _tv_open_duration | default(None) }}"
+
+  _tv_quiet_window: !input quiet_window
+  tv_quiet_window: "{{ _tv_quiet_window | default(None) }}"
+
+  _tv_lights: !input lights
+  tv_lights: "{{ _tv_lights | default([]) }}"
+
+  _tv_people: !input people
+  tv_people: "{{ _tv_people | default([]) }}"
+
+trigger:
+- id: startup
+  platform: homeassistant
+  event: start
+
+- id: 'on'
+  platform: state
+  entity_id: !input door_entity
+  not_from:
+  - unknown
+  - unavailable
+  to:
+  - "on"
+  - open
+
+- id: on_long
+  enabled: "{{ tv_open_duration is not none }}"
+  platform: state
+  entity_id: !input door_entity
+  not_from:
+  - unknown
+  - unavailable
+  to:
+  - "on"
+  - open
+  for: 
+    seconds: "{{ timedelta(**tv_open_duration).total_seconds() if tv_open_duration is not none else 0 }}"
+
+- id: 'off'
+  platform: state
+  entity_id: !input door_entity
+  not_from:
+  - unknown
+  - unavailable
+  to:
+  - "off"
+  - closed
+
+- id: people
+  platform: state
+  entity_id: !input input_people
+  not_from:
+  - unknown
+  - unavailable
+  to:
+  - 'on'
+  - 'home'
+  enable: "{{ tv_people | count > 0 }}"
+
+- id: resume_lighting
+  platform: time
+  at: sensor.{{ tv_slug }}_resume_trigger
+  enable: "{{ tv_lights | count > 0 }}"
+
+- id: quiet_window
+  platform: time
+  at: sensor.{{ tv_slug }}_quiet_trigger
+  enable: "{{ tv_quiet_window is not none }}"
+
+variables:
+
+  ### Variables for door buddy ###
+  version: "1.0.0"
+  this_name: Door Buddy
+  door_buddy_slug: "{{ this_name | slugify | replace('_', '-') }}"
+
+  ### Inputs that don't have a default ###
+  door: !input door
+  door_name: !input door_name
+  device_slug: "{{ door_buddy_slug }}-{{ slug }}"
+  slug: "{{ door_name | slugify }}"
+  topic: "{{ door_buddy_slug }}\{{ slug }}"
+  scene_id: "{{ this_name | slug }}_{{ door_name | slug }}"
+
+  ### Inputs with defaults ###
+  _notifications: !input notifications
+  notifications: "{{ _notifications | default([]) }}"
+
+  _lights: !input lights
+  lights: "{{ _lights | default([]) }}"
+  has_lights: "{{ lights | count > 0 }}"
+
+  _brightness: !input brightness
+  brightness: "{{ _brightness | default(100) }}"
+
+  _light_duration: !input light_duration
+  light_duration: "{{ _light_duration | default({'minutes': 2}) }}"
+
+  _quiet_window: !input quiet_window
+  quiet_window: "{{ _quiet_window | default(None) }}"
+  has_quiet_window: "{{ quiet_window is not none }}"
+
+  _people: !input people
+  people: "{{ _people | default([]) }}"
+  has_people: "{{ people | count > 0 }}"
+
+  _discovery_prefix: !input mqtt_discovery_prefix
+  discovery_previx: "{{ _discovery_prefix | default('homeassistant') }}"
+
+  ### Message Translations with defaults ###
+  _door_open_title: !input door_open_title
+  door_open_title: >
+    {{ (_door_open_title | default('{door} Opened!')).format(door=door_name) }}
+
+  _door_open_message: !input door_open_message
+  door_open_message:  >
+    {{ (_door_open_message | default('{door} is open!')).format(door=door_name) }}
+
+  _door_people_message: !input door_people_message
+  door_people_message: >
+    {{ (_door_open_message | default('{who} used the {door}')).format(who='{who}', door=door_name) }}
+
+  _door_long_title: !input door_long_title
+  door_long_title: >
+    {{ (_door_long_title | default('{door} Open!')).format(door=door_name) }}
+
+  _door_long_message: !input door_long_message
+  door_long_message: >
+    {{ (_door_long_message | default('{door} has been open for {duration}!')).format(door=door_name, duration='{duration}') }}
+
+  _person_unknown_title: !input person_unknown_title
+  person_unknown_title: >
+    {{ (_person_unknown_title | default('{door} user is still unknown!')).format(door=door_name) }}
+
+  _person_unknown_message: !input person_unknown_message
+  person_unknown_message: >
+    {{ (_person_unknown_message | default('The person who used the {door} is still unknown!')).format(door=door_name) }}
+
+  _found_person_title: !input found_person_title
+  found_person_title: >
+    {{ _found_person_title | default('Found {who} user!') }}
+
+  _found_person_message: !input found_person_message
+  found_person_message: >
+    {{ (_found_person_message | default('The person who used the {door} is {who}!')).format(door=door_name, who='{who}') }}
+
+  _word_for_someone: !input word_for_someone
+  word_for_someone: >
+    {{ _word_for_someone | default('someone') }}
+
+  _word_for_and: !input word_for_and
+  word_for_and: >
+    {{ _word_for_and | default('and') }}
+  
+  _word_for_second: !input word_for_second
+  word_for_second: >
+    {{ _word_for_second | default('second') }}
+  
+  _word_for_seconds: !input word_for_seconds
+  word_for_seconds: >
+    {{ _word_for_seconds | default('seconds') }}
+  
+  _word_for_minute: !input word_for_minute
+  word_for_minute: >
+    {{ _word_for_minute | default('minute') }}
+  
+  _word_for_minutes: !input word_for_minutes
+  word_for_minutes: >
+    {{ _word_for_minutes | default('minutes') }}
+
+  ### MQTT Device components ###
+  # These entities show up on the MQTT Integration device page
+  device_components:
+  - name: Last Opened
+    domain: sensor
+    device_class: timestamp
+    value_template: "{% raw %}{{ value_json.last_opened }}{% endraw%}"
+
+  - name: Last Closed
+    domain: sensor
+    device_class: timestamp
+    value_template: "{% raw %}{{ value_json.last_closed }}{% endraw%}"
+
+  - name: Open Count
+    domain: sensor
+    state_class: total_increasing
+    unit_of_measurement: opens
+    value_template: "{% raw %}{{ value_json.open_count }}{% endraw%}"
+
+  - name: Context
+    domain: sensor
+    unit_of_measurement: people
+    value_template: "{% raw %}{{ value_json.context | length }}{% endraw%}"
+    json_attributes_template: "{% raw %}{{ {'context': value_json.context} }}{% endraw%}"
+
+  ### MQTT Single entitys ###
+  # These entities only appear in entities lists and the user cannot modify them in
+  # any way.  This is to ensure that the automation works without the user doing
+  # something wrong (like renaming the entity_id).
+  trigger_components:
+  - name: Resume Trigger
+    include: "{{ has_lights }}"
+    domain: sensor
+    device_class: timestamp
+    value_template: "{% raw %}{{ value_json.resume_trigger | length }}{% endraw%}"
+
+  - name: Quiet Trigger
+    include: "{{ has_quiet_window }}"
+    domain: sensor
+    device_class: timestamp
+    value_template: "{% raw %}{{ value_json.quiet_window | length }}{% endraw%}"
+
+  - name: Storage
+    domain: sensor
+    value_template: "OK"
+    json_attributes_template: "{% raw %}{{ value_json }}{% endraw%}"
+
+  config: >
+    {%- set ns = namespace(items=[]) %}
+    {%- for item in device_components + trigger_components %}
+      {%- set name_slug = item.name | slugify %}
+      {%- set unique_id = '{0}-{1}-{2}'.format(door_buddy_slug, slug, name_slug) %}
+      {%- set ns.items = ns.items + [
+        (name_slug | slugify, dict(
+          unique_id=unique_id,
+          object_id=slug ~ '_' ~ name_slug,
+          discovery_topic='{0}\{1}\{2}\config'.format(discovery_prefix, item.domain, unique_id),
+        ))
+      ] %}
+    {%- endfor %}
+    {{ dict.from_keys(ns.items) }}
+
+  storage: >
+    {%- set state_obj = states['sensor.' ~ config.get('storage').object_id] %}
+    {%- if state_obj is not none %}
+      {{ state_obj.attributes }}
+    {%- else %}
+      {}
+    {%- endif %}
+
+action:
+- alias: "Setup the MQTT topic if this is the first time the blueprint runs"
+  if: "{{ storage.get('last_opened') is none }}"
+  then:
+  - variables:
+      _time: 
+  - action: mqtt.publish
+    data:
+      topic: "{{ topic }}"
+      payload: >
+        {% set _time = (now() - timedelta(seconds=5)).isoformat() %}
+        {{ dict(
+          last_opened=_time,
+          last_closed=_time,
+          open_count=0,
+          current_count=0,
+          context=[],
+          resume_trigger=_time,
+          quiet_window=_time,
+        ) | to_json }}
+- parallel:
+  - alias: Device Discovery
+    if: "{{ trigger.id == 'startup' }}"
+    then:
+    - variables:
+        topic: >
+          {{ discovery_prefix }}/device/{{ device_slug }}/config
+        device_discovery:
+          device:
+            name: "{{ door_name | title }}"
+            manufacturer: Petro
+            identifiers:
+            - "{{ device_slug }}"
+          origin:
+            name: "{{ this_name }}"
+            sw_version: "{{ version }}"
+            support_url: "https://github.com/Petro31/home-assistant-blueprints"
+          components: >
+            {%- set ns = namespace(items=[]) %}
+            {%- for item in device_components %}
+              {%- set name_slug = item.name | slugify %}
+              {%- set cfg = config.get(name_slug) %}
+              {%- set items = [
+                ('platform', item.domain),
+                ('name', item.name),
+                ('unique_id', cfg.unique_id),
+                ('object_id', cfg.object_id),
+                ('device_class', item.get('device_class')),
+                ('state_class', item.get('state_class')),
+                ('unit_of_measurement', item.get('unit_of_measurement')),
+                ('value_template', item.get('value_template', '{{ value }}')),
+                ('json_attributes_topic', topic if item.get('json_attributes_template') else None),
+                ('json_attributes_template', item.get('json_attributes_template')),
+              ] | rejectattr('1', 'none') | list %}
+              {%- set ns.items = ns.items + [ (cfg.unique_id, dict.from_keys(items)) ] %}
+            {%- endfor %}
+            {{ dict.from_keys(ns.items) }}
+          state_topic: "{{ topic }}"
+        trigger_discovery: >
+          {%- set ns = namespace(items=[]) %}
+          {%- for item in trigger_components if item.include %}
+            {%- set name_slug = item.name | slugify %}
+            {%- set cfg = config.get(name_slug) %}
+            {%- set items = [
+              ('name', item.name),
+              ('object_id', cfg.object_id),
+              ('state_topic', topic),
+              ('device_class', item.get('device_class')),
+              ('state_class', item.get('state_class')),
+              ('unit_of_measurement', item.get('unit_of_measurement')),
+              ('value_template', item.get('value_template', '{{ value }}')),
+              ('json_attributes_topic', topic if item.get('json_attributes_template') else None),
+              ('json_attributes_template', item.get('json_attributes_template')),
+            ] | rejectattr('1', 'none') | list %}
+            {%- set ns.items = ns.items + [ dict(topic=cfg.discovery_topic, payload=dict.from_keys(items), retain=True) ] %}
+          {%- endfor %}
+          {{ ns.items }}
+
+    - action: mqtt.publish
+      data:
+        topic: "{{ topic }}"
+        payload: "{{ device_discovery | to_json }}"
+        retain: True
+    
+    - repeat:
+        for_each: "{{ trigger_discovery }}"
+        sequence:
+        - action: mqtt.publish
+          data: "{{ repeat.item }}"
+
+  - alias: Door Opened
+    if: "{{ storage != {} and trigger.id == 'on' }}"
+    then:
+    - variables:
+        is_first: >
+          {{ storage.quiet_window | as_datetime < now() }}
+        quiet_window_duration: "{{ timedelta(**input_quiet_window).total_seconds() }}"
+        next_payload: >
+          {%- set t = now() %}
+          {%- set update = dict(
+            last_opened=t.isoformat(),
+            open_count=storage.open_count + 1,
+            current_count=1 if is_first else storage.current_count + 1,
+            resume_lighting=(t - timedelta(seconds=5)).isoformat(),
+            quiet_window=(t + timedelta(**input_quiet_window)),
+          ) %}
+          {% set kvps = storage.items() | rejectattr('0', 'in', update.keys()) | list + update.items() | list %}
+          {{ dict.from_keys(kvps) }}
+
+    - alias: Update Last Opened and Count and Cancel Resume Lighting and Capture Scene
+      parallel:
+      - alias: Update storage
+        action: mqtt.publish
+        data:
+          topic: "{{ topic }}"
+          payload: "{{ next_payload | to_json }}"
+    
+      - alias: If this is the first time the door opened in some time, capture the lights.
+        if: "{{ is_first }}"
+        then:
+          - action: scene.create
+            data:
+              scene_id: "{{ scene_id }}"
+              snapshot_entities: "{{ input_lights }}"
+
+    - alias: Notify if outside the quiet window.
+      if: "{{ is_first or not has_quiet_window or now() > storage.quiet_window | as_datetime }}"
+      then:
+      - variables:
+          who: &who >
+            {%- if not has_people %}
+              {%- set group = [] %}
+            {%- elif people | length == 1 and people | first == 'sensor.people_at_home' %}
+              {%- set group = state_attr('sensor.people_at_home', 'people') %}
+            {%- else %}
+              {#- This is done intentially to have a guests input boolean or binary sensor output last #}
+              {%- set group = people | select('is_state', 'home') | map('state_attr','friendly_name') | list %}
+              {%- set company = people | select('is_state', 'on') | map('state_attr','friendly_name') | list %}
+              {%- set group = group + company %}
+            {%- endif %}      
+            {%- if group | count > 0 %}
+              {{- [group[:-1] | join(', '), word_for_and, group[-1]] | join(' ') if group | count > 1 else group[0] }}
+            {%- else %}
+              {{- word_for_someone.title() }}
+            {%- endif %}
+          title: "{{ door_open_title }}"
+          message: "{{ door_people_message.format(who=who) if has_people else door_open_message }}"
+          notify: &notify_variable >
+            {%- set ns = namespace(items=[]) %}
+            {%- for notification in input_notifications %}
+              {% set ns.items = ns.items + [dict(data=dict(title=title, message=message), action=notification.action)] %}
+            {%- endfor %}
+            {{ ns.items }}
+      - repeat: &notify_repeat
+          for_each: "{{ notify }}"
+          sequence:
+          - action: "{{ repeat.item.action }}"
+            data: "{{ repeat.item.data }}"
+
+  - alias: Door Closed
+    if: "{{ storage != {} and trigger.id == 'off' }}"
+    then:
+    - parallel:
+      - alias: Update Last Closed and Resume Lighting
+        action: mqtt.publish
+        data:
+          topic: "{{ topic }}"
+          payload: >
+            {%- set update = dict(
+              last_closed=now().isoformat(),
+              resume_lighting=(now() + timedelta(**input_duration)).isoformat()
+            ) %}
+            {% set kvps = storage.items() | rejectattr('0', 'in', update.keys()) | list + update.items() | list %}
+            {{ dict.from_keys(kvps) | to_json }}
+
+  - alias: Door has been open too long.
+    if: "{{ storage != {} and trigger.id == 'too_long' }}"
+    then:
+    - variables:
+        title: "{{ door_long_title }}"
+        this_duration: >
+          {{ TODO: Need to know when the first door has opened to calculate the duration }}
+        message: "{{ door_long_message.format(duration=this_duration) }}"
+        notify: *notify_variable
+    - repeat: &notify_repeat
+
+  - alias: Notify person if last person was unkonwn
+    if: "{{ storage != {} and trigger.id == 'people' }}"
+    then:
+    - variables:
+
+  - alias: Resume Lighting
+    if: "{{ storage != {} and trigger.id == 'resume_lighting' }}"
+    then:
+    - variables:
+
+  - alias: Notify after Quiet Window
+    if: "{{ storage != {} and trigger.id == 'quiet_window' }}"
+    then:
+    - variables:
+        count: >
+          {{ TODO: Need to create a message for how many times the door has been opened. }}
+        who: *who
+        title: "{{ door_long_title }}"
+        message: "{{ door_long_message }}"
+        notify: *notify_variable
