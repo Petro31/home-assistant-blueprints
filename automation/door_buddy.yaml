@@ -214,6 +214,31 @@ blueprint:
           selector:
             text:
           
+        door_count_title:
+          name: Door Count Title
+          default: "{door} Opened {count} Times!"
+          description: >
+            Title of the notification when the quiet window has ended.  This message lets you know how many times the
+            door has been opened over the quiet duration.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+            {count} is required inside the string.  The door open count will replace {count} in the message.
+          selector:
+            text:
+
+        door_count_message:
+          name: Door Open Too Long Message
+          default: The {door} was opened {count} times over the past {duration}.
+          description: >
+            Message of the notification when the quiet window has ended.  This message lets you know how many times the
+            door has been opened over the quiet duration.
+
+            {door} is required inside the string.  The "door name" will replace {door} in the message.
+            {count} is required inside the string.  The door open count will replace {count} in the message.
+            {duration} is required inside the string.  The relative time will replace {duration} in the message.
+          selector:
+            text:
+
         person_unknown_title:
           name: Unknown Person Title
           default: "{door} user is still unknown!"
@@ -444,6 +469,14 @@ variables:
   door_long_message: >
     {{ (_door_long_message | default('{door} has been open for {duration}!')).format(door=door_name, duration='{duration}') }}
 
+  _door_count_title: !input door_count_title
+  door_count_title: >
+    {{ (_door_count_title | default('{door} Opened {count} Times!')).format(door=door_name, count='{count}') }}
+
+  _door_count_message: !input door_count_message
+  door_count_message: >
+    {{ (_door_count_message | default('The {door} was opened {count} times over the past {duration}.')).format(door=door_name, count='{count}', duration='{duration}') }}
+
   _person_unknown_title: !input person_unknown_title
   person_unknown_title: >
     {{ (_person_unknown_title | default('{door} user is still unknown!')).format(door=door_name) }}
@@ -569,7 +602,7 @@ action:
           last_opened=_time,
           last_closed=_time,
           open_count=0,
-          current_count=0,
+          current=dict(count=0, at=_time),
           context=[],
           resume_trigger=_time,
           quiet_window=_time,
@@ -656,7 +689,7 @@ action:
           {%- set update = dict(
             last_opened=t.isoformat(),
             open_count=storage.open_count + 1,
-            current_count=1 if is_first else storage.current_count + 1,
+            current=dict(count=1, at=t) if is_first else dict(count=storage.current.count + 1, at=storage.current.at),
             resume_lighting=(t - timedelta(seconds=5)).isoformat(),
             quiet_window=(t + timedelta(**input_quiet_window)),
           ) %}
@@ -734,8 +767,23 @@ action:
     then:
     - variables:
         title: "{{ door_long_title }}"
-        this_duration: >
-          {{ TODO: Need to know when the first door has opened to calculate the duration }}
+        this_duration: &relative_time >
+          {%- set t = now() %}
+          {%- set dt = storage.current.at | as_datetime %}
+          {%- set uptime = (t - dt).seconds %}
+
+          {%- macro phrase(single, plural, divisor, mod=None) %}
+            {%- set value = ((up_time // divisor) % (mod if mod else divisor)) | int %}
+            {%- set word = single if value == 1 else plural %}
+            {{- '{} {}'.format(value, word) if value > 0 else '' }}
+          {%- endmacro %}
+
+          {%- set values = [ 
+                 phrase(word_for_minute, word_for_minutes, 60, 604800), 
+                 phrase(word_for_second, word_for_seconds, 1, 60) 
+             ] | select('!=','') | list %}
+          
+          {{ values[:-1] | join(', ') ~ ' ' ~ word_for_and ~ ' ' ~ values[-1] if values | length > 1 else values | first | default }}
         message: "{{ door_long_message.format(duration=this_duration) }}"
         notify: *notify_variable
     - repeat: &notify_repeat
@@ -754,9 +802,7 @@ action:
     if: "{{ storage != {} and trigger.id == 'quiet_window' }}"
     then:
     - variables:
-        count: >
-          {{ TODO: Need to create a message for how many times the door has been opened. }}
-        who: *who
-        title: "{{ door_long_title }}"
-        message: "{{ door_long_message }}"
+        this_duration: *relative_time
+        title: "{{ door_count_title.format(count=storage.current.count) }}"
+        message: "{{ door_count_message.format(count=storage.current.count, duration=this_duration) }}"
         notify: *notify_variable
