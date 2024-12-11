@@ -69,6 +69,7 @@ blueprint:
                 domain:
                 - light
                 - switch
+                - input_boolean
 
         brightness:
           name: Brightness
@@ -86,6 +87,42 @@ blueprint:
             minutes: 2
           selector:
             duration:
+
+        use_sun:
+          name: Use sun
+          default: True
+          description: >
+            Use the sun to conditionally turn on the lights when the door is opened.
+
+            The lights will turn on when the sun is below the horizon.
+          selector:
+            boolean:
+
+        lux_entity:
+          name: Lux Entity
+          default: ~
+          description: >
+            Use a lux sensor to conditionally turn on the lights when the door is opened.
+          selector:
+            entity:
+              filter:
+                domain:
+                - sensor
+                device_class:
+                - illuminance
+        
+        lux_threshold:
+          name: Lux Threshold
+          default: 11
+          description: >
+            Any value below the lux threshold will cause the lights to turn on when the door is opened.
+          selector:
+            number:
+              min: 0
+              max: 100000
+              step: 1
+              unit_of_measurement: lx
+              mode: box
 
     door_notifications:
       name: Notification Controls
@@ -361,6 +398,11 @@ trigger_variables:
   _tv_people: !input people
   tv_people: "{{ _tv_people | default([]) }}"
 
+  _tv_use_sun: !input use_sun
+  tv_use_sun: "{{ _use_sun | default(True) }}"
+
+  tv_lux_entity:  !input lux_entity
+
 trigger:
 - id: startup
   platform: homeassistant
@@ -431,6 +473,12 @@ variables:
   _lights: !input lights
   lights: "{{ _lights | default([]) }}"
   has_lights: "{{ lights | count > 0 }}"
+
+  light_entities: >
+    {{ lights | select('search', '^light.') | list }}
+
+  toggle_entities: >
+    {{ lights | reject('in', light_entities) | list }}
 
   _brightness: !input brightness
   brightness: "{{ _brightness | default(100) }}"
@@ -684,6 +732,35 @@ action:
   - alias: Door Opened
     if: "{{ storage != {} and trigger.id == 'on' }}"
     then:
+    - if:
+      - condition: template
+        value_template: "{{ has_lights }}"
+      - condition: or
+        conditions:
+        - condition: state
+          entity_id: sun.sun
+          state: "below_horizon"
+          enabled: "{{ tv_use_sun }}"
+        - condition: numeric_state
+          entity_id: !input lux_entity
+          below: !input lux_threshold
+          enabled: "{{ tv_lux_entity | default(None) is not none }}"
+      then:
+        parallel:
+        - if: "{{ light_entities | count > 0 }}"
+          then:
+          - action: light.turn_on
+            target:
+              entity_id: "{{ light_entities }}"
+            data:
+              brightness: "{{ brightness }}"
+
+        - if: "{{ toggle_entities | count > 0 }}"
+          then:
+          - action: homeassistant.turn_on
+            target:
+              entity_id: "{{ toggle_entities }}"
+
     - variables:
         is_first: >
           {{ storage.quiet_window | as_datetime < now() }}
@@ -826,11 +903,12 @@ action:
     - repeat: &notify_repeat
 
   - alias: Resume Lighting
-    if: "{{ storage != {} and trigger.id == 'resume_lighting' }}"
+    # "states['scene.' ~ scene_id] is not none" verifies a restart didn't occur.  Scenes do not persist over restarts, don't resume if we don't have a scene.
+    if: "{{ storage != {} and trigger.id == 'resume_lighting' and has_lights and states['scene.' ~ scene_id] is not none }}"
     then:
-    - variables:
-        something: >
-          {{ TODO, add condition for sundown & lux sensor. }}
+    - action: scene.turn_on
+      target:
+        entity_id: scene.{{ scene_id }}
 
   - alias: Notify after Quiet Window
     if: "{{ storage != {} and trigger.id == 'quiet_window' }}"
